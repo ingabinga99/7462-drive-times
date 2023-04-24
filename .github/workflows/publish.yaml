@@ -18,6 +18,8 @@ jobs:
 
       - name: Install packages
         run: |
+        R -e "install.packages(c('googledrive', 'googlesheets4', 'httr', 'ragg', 'rvest'), repos='https://cran.rstudio.com/')"
+        R -e "install.packages('tidyverse', repos='https://cran.rstudio.com/')"
           R -e "install.packages(c('rmarkdown', 'tidyverse', 'googleway'), repos='https://cran.rstudio.com/')"
           
           - name: Install pandoc
