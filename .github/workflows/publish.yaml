@@ -1,0 +1,32 @@
+name: Publish Map to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up R environment
+        uses: r-lib/actions/setup-r@v1
+        with:
+          r-version: '4.1.0'
+
+      - name: Install packages
+        run: |
+          install.packages(c("rmarkdown", "tidyverse", "googleway"))
+
+      - name: Build Map
+        run: |
+          Rscript -e 'rmarkdown::render("drive_times.Rmd")'
+
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+
