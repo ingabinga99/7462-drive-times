@@ -18,7 +18,7 @@ jobs:
 
       - name: Install packages
         run: |
-          install.packages(c("rmarkdown", "tidyverse", "googleway"))
+          R -e "install.packages(c('rmarkdown', 'tidyverse', 'googleway'), repos='https://cran.rstudio.com/')"
 
       - name: Build Map
         run: |
