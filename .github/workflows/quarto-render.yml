@@ -39,7 +39,7 @@ jobs:
           TIDYCENSUS_API_KEY: ${{ secrets.TIDYCENSUS_API_KEY }} #may need to change
         with:
           to: html
-          path: drive_times_report.qmd
+          path: spatial_dashboard6.Rmd
       - name: Setup git config
         run: |
           git config user.name "GitHub Actions Bot"
