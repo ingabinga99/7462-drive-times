@@ -1,0 +1,293 @@
+---
+title: "Assignment 6"
+author: "Ingrid Jacobson and ChatGPT"
+date: "2023 - Apr - 3"
+format:
+  html:
+    theme: pulse
+    css: styles.css
+    toc: true
+    toc-depth: 2
+    code-block-bg: "#ECECEC"
+    page-layout: full
+    embed-resources: true
+---
+
+```{r setup, include = FALSE, echo = FALSE}
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+# Load necessary libraries
+install.packages("gtsummary")
+install.packages("tidyverse", repos = "https://cloud.r-project.org")
+install.packages("rlang")
+library(tidyverse) # for data manipulation and visualization
+library(sf) # for working with spatial data
+library(ggmap) # for getting base maps and adding them to plots
+library(leaflet) # for interactive maps
+library(osmdata) # for working with OpenStreetMap data
+library(tigris) # for working with US Census data
+library(viridis, quietly = TRUE) # for color palettes
+library(ggthemes, quietly = TRUE) # for additional ggplot2 themes
+library(gtsummary) #for creating summary tables in R
+#Working directory for .RMD
+knitr::opts_knit$set(echo = TRUE,
+                     root.dir = rprojroot::find_rstudio_root_file())
+#Controlling figure output in markdown
+knitr::opts_chunk$set(
+#  fig.height =   
+  fig.width = 6,
+#  fig.asp = .5,
+  out.width = "90%",
+#  out.height = 
+ fig.align  = "center",
+  cache = TRUE,
+  eval  = TRUE,
+  echo  = TRUE,
+  warning = FALSE
+)
+#My Colours (from viridis)
+my_purple <- "#440154FF"
+my_yellow <- "#FDE725FF"
+#Set Theme for ggplot2
+theme_set(theme_bw() + theme(plot.title = element_text(hjust = 0.5), legend.position = "bottom"))
+#Set Scientific notation output and decimal places for knitr
+options(scipen = 999)
+options(digits = 4)
+options(dplyr.summarise.inform = FALSE)
+```
+
+## 1.1 Create a new repository
+
+Created a new repository in github. URL: <https://github.umn.edu/jaco2118/homework_6_spatial_dashboard.git>
+
+## 1.2 A leaflet of the state of MN, containing at least 3 open street maps, all involving gardening
+
+a\. Creating the leaflet
+
+```{r, echo= TRUE}
+#ChatGPT and I talked a lot about making this leaflet
+# Get the bounding box and county outline for Minnesota using osmdata package
+mn_box <- osmdata::getbb("minnesota") # retrieve bounding box for Minnesota
+mn_outline <- osmdata::getbb("minnesota", format_out = "polygon") %>% # retrieve outline of Minnesota as a polygon
+as_tibble() %>% # convert to tibble for easier manipulation
+rename(longitude = V1, latitude = V2) # rename columns to make them more descriptive
+# Get the base map (foundational layer) using ggmap package
+mn_map <- get_map(
+  location = mn_box, # bounding box for Minnesota
+  source = "stamen", # map source (in this case, Stamen)
+  maptype = "terrain", # type of map to retrieve
+  crop = TRUE # crop map to bounding box specified
+)
+# Create the base map using ggmap package and add the county outline as a layer
+mn_map <- ggmap(mn_map) + # create base map using ggmap
+  geom_path(data = mn_outline, aes(x = longitude, y = latitude), # add county outline as a layer
+            colour = "black", size = 1.0, alpha = 0.6, inherit.aes = FALSE) + 
+  theme_map() + # apply ggmap theme
+  theme( # customize theme elements
+    plot.title = element_text(size = 16, hjust = 0.5), # change size and alignment of plot title
+    legend.text = element_text(size = 16), # change size of legend text
+    legend.title = element_text(size = 16), # change size of legend title
+    legend.position = "right" # position legend on the right side of the plot
+  )
+# Display base map
+mn_map # print the map object to display the map
+```
+
+b\. Getting shops: florist, garden center, and garden furniture
+
+```{r, echo= TRUE}
+# Set up an overpass query for shops selling flowers within Minnesota
+flower_shop_df <- opq(
+  bbox = "minnesota", # Set the bounding box to retrieve data for Minnesota
+  timeout = 150 # Set the timeout value to 150 seconds to allow the query to run longer before timing out, it keeps timing out
+) %>%
+  add_osm_feature(key = "shop", value = c("garden_furniture","florist", "garden_centre")) %>% # Add the OSM feature to query for shops selling garden furniture, florists, and garden centers
+  osmdata_sf() # Retrieve the data and convert it to an sf object
+```
+
+c\. Extracting a data frame
+
+```{r, results = 'hide'}
+# Getting things that I will need
+cleaned_flower_shop_df <- flower_shop_df$osm_points %>% 
+  janitor::clean_names() %>% #ensure consist column names
+  filter(!is.na(shop)) %>% #removes rows where 'shop' is NA
+  dplyr::select(osm_id, name, shop) #keeps only those selected columns
+# Display the first few rows of the dataset to check work
+head(cleaned_flower_shop_df)
+```
+
+d\. Putting the shops onto the leaflet
+
+```{r, output = FALSE}
+mn_map +
+  geom_sf(data = cleaned_flower_shop_df,
+          aes(colour = shop),
+          inherit.aes = FALSE,
+          alpha = 0.8, shape = 16) +
+  scale_colour_manual(values = c("garden_furniture" = "dark green", "florist" = "purple", "garden_centre" = "hot pink"),
+                      labels = c("Garden Furniture", "Florist", "Garden Centre")) + 
+  labs(title = "Gardening-Related Shops in Minnesota and the Surrounding Area", 
+       colour = "Shop Type") + # Change the legend title
+  theme_map() +
+  theme(
+    plot.title   = element_text(size  = 16,
+                                hjust = 0.5),
+    legend.text  = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.position = "right"
+  )
+```
+
+e\. Adding text labels to the leaflet
+
+```{r}
+# Convert shop column to factor variable
+cleaned_flower_shop_df$shop <- factor(cleaned_flower_shop_df$shop)
+# Extract the levels/order of shop type factor
+shop_types <- levels(cleaned_flower_shop_df$shop)
+n_types <- length(shop_types)
+# Define the colors you want to use for each shop type
+my_colors <- c("purple", "dark green", "hot pink") # make sure the order matches shop_types
+# Add a text label
+labeled_flower_shop_df <- cleaned_flower_shop_df %>%
+  mutate(
+    text_label = str_c(
+      name,
+      "<br/>Store Type: ",
+      shop,
+      "<br/>Open Hours: "
+    )
+  )
+# Initialize our color palette
+my_palette <- colorFactor(my_colors, levels = shop_types)
+# Redisplay the leaflet
+library(htmltools)
+leaflet(data = labeled_flower_shop_df) %>%
+  addProviderTiles('CartoDB.Positron') %>% 
+  addCircleMarkers(
+    color   = ~my_palette(shop),
+    label   = ~map(text_label, HTML),
+    opacity = 0.6,
+    weight  = 4,
+    radius  = 4
+  ) %>%
+  addLegend(
+    title = "Store Type",
+    position = "bottomright",
+    colors = my_palette(shop_types),
+    labels = shop_types,
+    opacity = 1,
+    labFormat = labelFormat(transform = function(x) { 
+      paste0("<span style='background-color:", my_palette(x), 
+             ";color:white;padding:4px;border-radius:4px;'>", x, "</span>") 
+    })
+  )
+```
+
+## 1.3 A ggplotly of Hennepin County using sf, ggmap, tidycensus, ggplot, and plotly; which describes a Census Blockgroup level 2020 American Community Survey (ACS) "median age"
+
+```{r, echo= TRUE}
+options(tigris_use_cache = TRUE)
+library(tidycensus)
+library(plotly)
+#Call the ACS API, returns a sf object
+mn_age.df <- get_acs(
+  geography = "tract",
+  variables = "B01002_001", #Code for median age
+  state     = "MN",
+  county    = "Hennepin",
+  year      = 2020,
+  geometry  = TRUE
+)
+#Add a text label to mn_age.df
+mn_age_plotly.df <- mn_age.df %>%
+  mutate(
+    tract      = str_split(NAME, ",") %>%
+                 map_chr(1) %>%
+                 str_remove("Census Tract "),
+    text_label = str_c(
+                  "Tract: ",
+                  tract,
+                  "\nMedian Age: ",
+                  estimate
+                 )
+  )
+#Generate the ggplot
+age.gg <- ggplot() + 
+  geom_sf(data = mn_age_plotly.df, 
+          aes(fill = estimate, text = text_label),
+          colour = "black", size = 0.1) + 
+  labs(title = "Hennepin County, MN 2020 ACS Median Age") + 
+  scale_fill_viridis_c("Median Age") +
+  theme_map() +
+  theme(
+    plot.title   = element_text(size  = 16,
+                                hjust = 0.5),
+    legend.text  = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.position = "right"
+  )
+#Display the interactive ggplot
+ggplotly(age.gg,
+         tooltip = "text",
+         height  = 600,
+         width   = 800) %>%
+    style(hoveron = "fills")
+```
+
+## 1.4 A spatial visualization of the number of gardens/farms in Hennepin County (are you sensing a theme??)
+
+```{r, echo= TRUE}
+# Load required packages
+library(tidycensus) # for accessing Census API
+library(sf)         # for working with spatial data
+library(ggplot2)    # for data visualization
+library(plotly)     # for interactive plotting
+# Set options for tidycensus caching
+options(tigris_use_cache = TRUE)
+# Call the ACS API, returning an sf object for Hennepin County, MN
+mn_garden.df <- get_acs(
+  geography = "tract",            # geographic level (e.g. block group, tract, county)
+  variables = "B25036_001",      # variable code for "Number of households with a garden or farm"
+  state     = "MN",              # state FIPS code
+  county    = "Hennepin",        # county name
+  year      = 2020,              # year of ACS data
+  geometry  = TRUE               # include census tract boundaries in output
+)
+# Create a text label for each census tract
+mn_garden_plotly.df <- mn_garden.df %>%
+  mutate(
+    tract      = str_split(NAME, ",") %>%
+                 map_chr(1) %>%
+                 str_remove("Census Tract "),
+    text_label = str_c(
+                  "Tract: ",
+                  tract,
+                  "\nNumber of households with a garden or farm: ",
+                  estimate
+                 )
+  )
+# Generate the ggplot object
+garden.gg <- ggplot() + 
+  geom_sf(data = mn_garden_plotly.df, 
+          aes(fill = estimate, text = text_label),
+          colour = "black", size = 0.1) + 
+  labs(title = "Hennepin County, MN 2020 ACS: Number of households with a garden or farm") + 
+  scale_fill_viridis_c("Number of households with a garden or farm") +
+  theme_map() +
+  theme(
+    plot.title   = element_text(size  = 16,
+                                hjust = 0.5),
+    legend.text  = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.position = "right"
+  )
+# Create an interactive plotly object
+garden.plotly <- ggplotly(garden.gg,
+                          tooltip = "text",
+                          height  = 600,
+                          width   = 800) %>%
+                 style(hoveron = "fills")
+# Display the interactive plotly object
+garden.plotly
+```
